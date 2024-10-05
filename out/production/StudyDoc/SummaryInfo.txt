@@ -394,6 +394,68 @@ ________________________________________________________________________________
     @Autowired - получаем экземпляр из контекста и связываем. Внедрение в одиночные бины не имеет смысла
 
 
+    область видимости в рамках запроса — Spring создает отдельный экземпляр класса бина для каждого HTTP-запроса.
+        От каждого запроса от каждого клиента
+        -Создается множество экземпляров бина
+        -Экземпляры быстро чистятся сборщиком мусора
+        -Не должна выполняться сложная логика
+
+        Доступен только одному запросу
+        -не годится для многопоточки.
+        -в атрибутах можно сохранить данные, используемые в запросе
+        -нельзя использовать для методов синхронизации
+
+    область видимости в рамках сессии — Spring создает экземпляр и хранит его в памяти сервера в течение всей
+        HTTP-сессии.
+
+
+
+    область видимости в рамках приложения — экземпляр является уникальным в контексте приложения и доступен все время
+        работы приложения.
+
+    Логика аутентификации:
+
+    @Controller
+    public class LoginController {
+     @GetMapping("/")
+     public String loginGet() {
+     return "login.html";
+     }
+     @PostMapping("/")
+     public String loginPost(
+     @RequestParam String username,
+     @RequestParam String password,
+     Model model
+     ) {
+     boolean loggedIn = false;
+     if (loggedIn) {
+     model.addAttribute("message", "You are now logged in.");
+     } else {
+     model.addAttribute("message", "Login failed!");
+     }
+     return "login.html";
+     }
+    }
+
+    Логика с созданием бина в рамках запроса
+
+    @Component
+    @RequestScope
+    public class LoginProcessor {
+     private String username;
+     private String password;
+     public boolean login() {
+     String username = this.getUsername();
+     String password = this.getPassword();
+     if ("natalie".equals(username) && "password".equals(password)) {
+     return true;
+     } else {
+     return false;
+     }
+     }
+     // геттеры и сеттеры
+    }
+
     Использование аннотации @ComponentScan ??
 
 _______________________________________________________________________________________________________________________
@@ -516,7 +578,95 @@ ________________________________________________________________________________
          }
 
 
+      Реализация списка товаров
 
+      @Service
+      public class ProductService {
+       private List<Product> products = new ArrayList<>();
+       public void addProduct(Product p) {
+       products.add(p);
+       }
+       public List<Product> findAll() {
+       return products;
+       }
+       }
+
+       @Controller
+       public class ProductsController {
+        private final ProductService productService;
+        public ProductsController(ProductService productService) {
+        this.productService = productService;
+        }
+        @RequestMapping("/products")
+        public String viewProducts(Model model) {
+        var products = productService.findAll();
+        model.addAttribute("products", products);
+        return "products.html";
+        }
+       }
+
+       <!DOCTYPE html>
+       <html lang="en" xmlns:th="http://www.thymeleaf.org">
+        <head>
+        <meta charset="UTF-8">
+        <title>Home Page</title>
+        </head>
+        <body>
+        <h1>Products</h1>
+        <h2>View products</h2>
+        <table>
+        <tr>
+        <th>PRODUCT NAME</th>
+        <th>PRODUCT PRICE</th>
+        </tr>
+        <tr th:each="p: ${products}" >
+        <td th:text="${p.name}"></td>
+        <td th:text="${p.price}"></td>
+        </tr>
+        </table>
+        </body>
+       </html>
+
+        Добавление продукта
+
+         @RequestMapping(path = "/products",
+         method = RequestMethod.POST)
+          public String addProduct(
+          @RequestParam String name,
+          @RequestParam double price,
+          Model model
+          ) {
+          Product p = new Product();
+          p.setName(name);
+          p.setPrice(price);
+          productService.addProduct(p);
+          var products = productService.findAll();
+          model.addAttribute("products", products);
+          return "products.html";
+          }
+         }
+
+         <!DOCTYPE html>
+         <html lang="en" xmlns:th="http://www.thymeleaf.org">
+          <head>
+          <meta charset="UTF-8">
+          <title>Home Page</title>
+          </head>
+          <body>
+          <!-- Остальной код -->
+          <h2>Add a product</h2>
+          <form action="/products" method="POST"> - Создание пост запроса
+          Name: <input
+          type="text"
+          name="name"><br /> - позволяет внести наименование товара
+          Price: <input
+          type="number"
+          step="any"
+          name="price"><br /> - позволяет внести цену товара
+          <button type="submit">Add product</button> - позволяет отправить форму
+          </form>
+          </body>
+         </html>
 _______________________________________________________________________________________________________________________
     Управление БД
 
