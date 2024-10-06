@@ -377,6 +377,249 @@ ________________________________________________________________________________
         широкий инструментарий из коробки, удобный вызов процедур.
 
     tRPC -
+
+
+_______________________________________________________________________________________________________________________
+
+        REST - сервис
+
+    Рест (передача состояния представления) обеспечивает доступ к функциональности через конечные точки.
+
+        1. Обмен данными:
+            Конечные точки - способ организовать коммуникацию между двумя приложениями. Представляют собой действие
+                контроллера, связанного с http-методом и путем
+            Возможные проблоемы: несогласованность времени выполнения метода контроллера и соединения http выозова
+            Слишком большое количество обращений к одной точке может превести к черезмерной нагрузке и сбою
+            Влиятие возможного сетевого сбоя
+
+        @ResponseBody - действие контроллера не возвращает имя представления, а передает данные.
+        @RestController - елси контроллер
+
+        Ответ:
+            В теле http ответа - способ представления JSON
+            http ответ с статусом и заголовками.
+
+             return ResponseEntity - возвращение определенного статуса
+             .status(HttpStatus.ACCEPTED)
+             .header("continent", "Europe")
+             .header("capital", "Paris")
+             .header("favorite_food", "cheese and wine")
+             .body(c);
+             }\
+
+          @PostMapping("/payment") - перехват исключений
+          public ResponseEntity<?> makePayment() {
+
+          try {
+          PaymentDetails paymentDetails =
+          paymentService.processPayment();
+
+          return ResponseEntity
+          .status(HttpStatus.ACCEPTED)
+          .body(paymentDetails);
+          } catch (NotEnoughMoneyException e) {
+          ErrorDetails errorDetails = new ErrorDetails();
+          errorDetails.setMessage("Not enough money to make the payment.");
+          return ResponseEntity
+          .badRequest()
+          .body(errorDetails);
+          }
+          }
+
+          Но, для избежания дублирования кода лучше использовать аспекты
+
+        @RestControllerAdvice
+        public class ExceptionControllerAdvice {
+         @ExceptionHandler(NotEnoughMoneyException.class)
+         public ResponseEntity<ErrorDetails> exceptionNotEnoughMoneyHandler() {
+         ErrorDetails errorDetails = new ErrorDetails();
+         errorDetails.setMessage("Not enough money to make the payment.");
+         return ResponseEntity
+         .badRequest()
+         .body(errorDetails);
+         }
+        }
+
+        Тело запроса - используется при большом объеме данных - более 50-100 символов @RequestBody
+        @RestController
+        public class PaymentController {
+         private static Logger logger =
+         Logger.getLogger(PaymentController.class.getName());
+         @PostMapping("/payment")
+         public ResponseEntity<PaymentDetails> makePayment(
+         @RequestBody PaymentDetails paymentDetails) {    - извлечение данных из тела http запроса
+         logger.info("Received payment " +
+         paymentDetails.getAmount());    - вывод в консоль сервера сумму платежа
+         return ResponseEntity
+         .status(HttpStatus.ACCEPTED)
+         .body(paymentDetails);   - возвращение объекта с информацией
+         }
+        }
+_______________________________________________________________________________________________________________________
+
+    Вызов конечных точек REST
+       1.  OpenFeign — инструмент из проекта Spring Cloud.
+       2.  RestTemplate — инструмент, который применяется для вызова конечных точек REST, начиная со Spring 3.
+       3.  WebClient — функция Spring, призванная стать заменой для RestTemplate.
+
+    @RestController
+    public class PaymentsController {
+     private static Logger logger =                                         - вывод в консоль
+     Logger.getLogger(PaymentsController.class.getName());
+     @PostMapping("/payment")                                               - конечная точка http метода
+     public ResponseEntity<Payment> createPayment(
+     @RequestHeader String requestId,                                       - Точка получает заголовок и тело запроса
+     @RequestBody Payment payment
+     ) {
+     logger.info("Received request with ID " + requestId +
+     " ;Payment Amount: " + payment.getAmount());
+     payment.setId(UUID.randomUUID().toString());                           - присвоение случайного ID
+     return ResponseEntity                                                  - возвращение http ответа
+     .status(HttpStatus.OK)
+     .header("requestId", requestId)
+     .body(payment);
+     }
+    }
+
+    для реализации необходимо добавить
+    <dependency>
+     <groupId>org.springframework.cloud</groupId>
+     <artifactId>spring-cloud-starter-openfeign</artifactId>
+    </dependency>
+
+    @FeignClient(name = "payments",                     - создание REST клиента
+     url = "${name.service.url}")
+    public interface PaymentsProxy {
+     @PostMapping("/payment")                           - http метод конечной точки
+     Payment createPayment(                             - определяем заголовки и тело запроса
+     @RequestHeader String requestId,
+     @RequestBody Payment payment);
+    }
+
+    @Configuration                                      - показываем где следует искать прокси контракты
+    @EnableFeignClients(
+     basePackages = "com.example.proxy")
+    public class ProjectConfig {
+    }
+
+    @RestController                                     - класс с внедренным прокси контроллером
+    public class PaymentsController {
+     private final PaymentsProxy paymentsProxy;
+     public PaymentsController(PaymentsProxy paymentsProxy) {
+     this.paymentsProxy = paymentsProxy;
+     }
+     @PostMapping("/payment")
+     public Payment createPayment(
+     @RequestBody Payment payment
+     ) {
+     String requestId = UUID.randomUUID().toString();
+     return paymentsProxy.createPayment(requestId, payment);
+     }
+    }
+
+    RestTemplate не может - синхронный и ассинхрпонныйвызове конечных точек
+                            сокращение кода и количества исключений
+                            повторные вызовы и операции отката
+
+    Для создания вызова - Описать HTTP заголовки, создать экземпляр HttpEntity, exchange меттодом получить ответ
+
+    Пример прокси класса:
+
+    @Component
+    public class PaymentsProxy {
+     private final RestTemplate rest;
+     @Value("${name.service.url}")                                  - получаем урл платежей
+     private String paymentsServiceUrl;
+
+     public PaymentsProxy(RestTemplate rest) {                      - Внедряем из контекста рест типлате
+     this.rest = rest;
+     }
+
+     public Payment createPayment(Payment payment) {
+     String uri = paymentsServiceUrl + "/payment";
+     HttpHeaders headers = new HttpHeaders();                       - создаем объект в котором определяются заголовки
+     headers.add("requestId",
+     UUID.randomUUID().toString());
+
+     HttpEntity<Payment> httpEntity =
+     new HttpEntity<>(payment, headers);                            - строим объект с данными запроса
+
+     ResponseEntity<Payment> response =                             - отправляем запрос и извлекаем данные
+     rest.exchange(uri,
+     HttpMethod.POST,
+     httpEntity,
+     Payment.class);
+
+     return response.getBody();                                     - возвращаем запрос
+     }
+    }
+
+    Тогда класс контроллера
+    @RestController
+    public class PaymentsController {
+     private final PaymentsProxy paymentsProxy;
+     public PaymentsController(PaymentsProxy paymentsProxy) {
+     this.paymentsProxy = paymentsProxy;
+     }
+     @PostMapping("/payment")
+     public Payment createPayment(
+     @RequestBody Payment payment
+     ) {
+     return paymentsProxy.createPayment(payment);
+     }
+    }
+_______________________________________________________________________________________________________________________
+    WebClient - основан на реактивном программировании
+
+    <dependency>
+     <groupId>org.springframework.boot</groupId>
+     <artifactId>spring-boot-starter-webflux</artifactId>
+    </dependency>
+
+    Добавление бина @Configuration
+                    public class ProjectConfig {
+                     @Bean
+                     public WebClient webClient() {
+                     return WebClient
+                     .builder() Создаем бин WebClient и добавляем его в контекст Spring
+                     .build();
+                     }
+                    }
+
+    Прокси класс @Component
+                 public class PaymentsProxy {
+                  private final WebClient webClient;
+                  @Value("${name.service.url}")
+                  private String url;
+                  public PaymentsProxy(WebClient webClient) {
+                  this.webClient = webClient;
+                  }
+                  public Mono<Payment> createPayment(
+                  String requestId,
+                  Payment payment) {
+                  return webClient.post()
+                  .uri(url + "/payment")
+                  .header("requestId", requestId)
+                  .body(Mono.just(payment), Payment.class)
+                  .retrieve()
+                  .bodyToMono(Payment.class);
+                  }
+                 }
+    Класс контроллера
+    @RestController
+    public class PaymentsController {
+     private final PaymentsProxy paymentsProxy;
+     public PaymentsController(PaymentsProxy paymentsProxy) {
+     this.paymentsProxy = paymentsProxy;
+     }
+     @PostMapping("/payment")
+     public Mono<Payment> createPayment(
+     @RequestBody Payment payment
+     ) {
+     String requestId = UUID.randomUUID().toString();
+     return paymentsProxy.createPayment(requestId, payment);
+     }
+    }
 _______________________________________________________________________________________________________________________
     Жизненный цикл Bean - способ создания управления жизненным циклом называют областями видимости (scope)
             Часто встречающиеся - одиночка и прототип, также существуют запрос, сессия и приложение
@@ -406,12 +649,28 @@ ________________________________________________________________________________
         -нельзя использовать для методов синхронизации
 
     область видимости в рамках сессии — Spring создает экземпляр и хранит его в памяти сервера в течение всей
-        HTTP-сессии.
+        HTTP-сессии. @SessionScope
+    Управляемый Spring объект, для которого фреймворк создает экземпляр, првязанный к http сессии
 
+    Позволяют реализовать: Аутентификацию - данные пользователя сохраняются все время, пока пользователь перемещается
+        по страницам приложения и отправляет запросы.
+                           Карзина интернет магазина - пользователь посещает разные страницы приложения в поиске
+        товаров, корзина все запоминает
 
+    Экземпляры бинов сохраняются всю сессию -> слишком большое количество таких данных могут перегрузить систему
+    Один экземпляр может быть доступен нескольким пользователям -> проблемы одновременного выполнения конкурентных запросов
+
+    <body>  - добавление логаута
+     <h1>Welcome, <span th:text="${username}"></span></h1>
+     <a href="/main?Logout">Log out</a>
+    </body>
 
     область видимости в рамках приложения — экземпляр является уникальным в контексте приложения и доступен все время
-        работы приложения.
+        работы приложения.  @ApplicationScope
+    Лчше неиспользовать в реальных приложениях. Похож на одиночный бин, но недоступен для создания экземпляров
+        Пример использования - счетчик аутентифицированных пользователей
+
+
 
     Логика аутентификации:
 
