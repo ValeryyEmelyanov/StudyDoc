@@ -929,8 +929,107 @@ ________________________________________________________________________________
 _______________________________________________________________________________________________________________________
     Управление БД
 
+    СУБД - обеспечение, для организации эффективной работы с БД
+
     Реляционные БД - Spring boot starter jpa (Hibernate(jacarta persistens API)) + (PostgreSQL(JDBS Driver))
 
+    Java Database Connectivity (JDBC). JDBC — это способ установить подключение к СУБД для взаимодействия
+        с базой данных.
+
+    Драйвер необходим для обеспечения отдельных реализаций для работы с конкретными технологиями MySql or Postgres
+    т.е. подключаться к БД для работы с абстракциями
+
+    Приложение взаимодействует с абстракциями которые реализует JDBC драйвер, подключенный к СУБД
+
+    Первый вариант использования драйвера - непосредственное подключение к СУБД, приложение запрашивает соединение с БД
+        каждый раз, когда требуется выполнить операцию
+        Connection con = DriverManager.getConnection(url, username, password);
+
+    Второй вариант - создать объект источника данных - это объект, обязанность которого состоит в управлении
+    соединениями приложения с сервером БД HikariCP (Hikari connection pool — пул соединений Hikari).
+    Минимальный функционал
+
+    JdbcTemplate — самый простой из инструментов Spring, предназначенных для работы с реляционными базами данных.
+
+    H2 - БД, хранящаяся в оперативной памяти
+
+    NySQL - нетребовательная к ресурсам СУБД
+
+    Репозиторий — это класс, отвечающий за взаимодействие с базой данных.
+
+    <dependency>
+     <groupId>org.springframework.boot</groupId>
+     <artifactId>spring-boot-starter-web</artifactId>
+    </dependency>
+    <dependency>
+     <groupId>org.springframework.boot</groupId>
+     <artifactId>spring-boot-starter-jdbc</artifactId>
+    </dependency>
+    <dependency>
+     <groupId>com.h2database</groupId>
+     <artifactId>h2</artifactId>
+    <scope>runtime</scope>
+     </dependency>
+
+     В папке ресурсов создаем schema.sql - записсываются запросы, определяющие структуру БД
+
+     CREATE TABLE IF NOT EXISTS purchase (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      product varchar(50) NOT NULL,
+      price double NOT NULL
+     );
+
+     Бин для работы с сохраненными данными
+        @Repository
+        public class PurchaseRepository {
+         private final JdbcTemplate jdbc;
+         public PurchaseRepository(JdbcTemplate jdbc) {
+         this.jdbc = jdbc;
+         }
+         public void storePurchase(Purchase purchase) {
+         String sql =
+         "INSERT INTO purchase VALUES (NULL, ?, ?)";
+         jdbc.update(sql,
+         purchase.getProduct(),
+         purchase.getPrice());
+         }
+          public List<Purchase> findAllPurchases() {
+          String sql = "SELECT * FROM purchase";                         - получение всех записей из таблицы
+
+      RowMapper<Purchase> purchaseRowMapper = (r, i) -> {           - RowMapper сообщает Jdbc как преобразовать строку
+          Purchase rowObject = new Purchase();
+          rowObject.setId(r.getInt("id"));
+          rowObject.setProduct(r.getString("product"));
+          rowObject.setPrice(r.getBigDecimal("price"));
+          return rowObject;
+          };
+          return jdbc.query(sql, purchaseRowMapper);
+          }
+        }
+
+    В классе контроллера
+        @RestController
+        @RequestMapping("/purchase")
+        public class PurchaseController {
+         private final PurchaseRepository purchaseRepository;
+
+         public PurchaseController(
+         PurchaseRepository purchaseRepository) {
+         this.purchaseRepository = purchaseRepository;
+         }
+         @PostMapping                                                    - Конечная точка для сохранения в бд данных
+         public void storePurchase(@RequestBody Purchase purchase) {
+         purchaseRepository.storePurchase(purchase);
+         }
+         @GetMapping                                                    - Для получения с БД
+         public List<Purchase> findPurchases() {
+         return purchaseRepository.findAllPurchases();
+         }
+        }
+
+    RowMapper — объект, выполняющий преобразование строки из ResultSet в заданный объект
+
+    ОФТОП для цен - BigDecimal
     JPA (Java/Jakarta Persistens API) - спецификация, предоставляет набор анотация для описания класса синхронизации
     с БД + правила реализации ORM
 
