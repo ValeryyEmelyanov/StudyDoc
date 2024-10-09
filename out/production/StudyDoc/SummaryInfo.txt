@@ -1029,6 +1029,64 @@ ________________________________________________________________________________
 
     RowMapper — объект, выполняющий преобразование строки из ResultSet в заданный объект
 
+    Определение источника БД
+
+    <dependency>
+     <groupId>org.springframework.boot</groupId>
+     <artifactId>spring-boot-starter-jdbc</artifactId>
+    </dependency>
+    <dependency>
+     <groupId>org.springframework.boot</groupId>
+     <artifactId>spring-boot-starter-web</artifactId>
+    </dependency>
+    <dependency>
+     <groupId>mysql</groupId>
+     <artifactId>mysql-connector-java</artifactId>
+     <scope>runtime</scope>
+    </dependency>
+
+    aplication properties:
+
+    spring.datasource.url=jdbc:mysql://localhost/spring_quickly?
+    useLegacyDatetimeCode=false&serverTimezone=UTC
+    spring.datasource.username=<dbms username>
+    spring.datasource.password=<dbms password>
+    spring.datasource.initialization-mode=always
+
+    Кастомный бин Data Soerse необходим:
+            Специфическая реализация
+            подключение к нескольким БД
+            Специфические параметры объекта
+            Spring Boot не используется
+
+    @Configuration
+    public class ProjectConfig {
+     @Value("${custom.datasource.url}")  - параметр соединения
+     private String datasourceUrl;
+     @Value("${custom.datasource.username}")  - параметр соединения
+     private String datasourceUsername;
+     @Value("${custom.datasource.password}")  - параметр соединения
+     private String datasourcePassword;
+     @Bean
+     public DataSource dataSource() {
+     HikariDataSource dataSource =
+     new HikariDataSource();
+     dataSource.setJdbcUrl(datasourceUrl);
+     dataSource.setUsername(datasourceUsername);
+     dataSource.setPassword(datasourcePassword);
+     dataSource.setConnectionTimeout(1000);
+     return dataSource;
+     }
+    }
+
+    При этом aplication properties
+        custom.datasource.url=jdbc:mysql://localhost/spring_quickly?
+        useLegacyDatetimeCode=false&serverTimezone=UTC
+        custom.datasource.username=root
+        custom.datasource.password=
+
+
+
     ОФТОП для цен - BigDecimal
     JPA (Java/Jakarta Persistens API) - спецификация, предоставляет набор анотация для описания класса синхронизации
     с БД + правила реализации ORM
@@ -1101,6 +1159,83 @@ ________________________________________________________________________________
     м.б. представлени как xml, sql команды
 
     Управление состояние БД - управление миграциями
+
+_______________________________________________________________________________________________________________________
+
+    Spring Data
+        Предоставляет реаолизацию необходимых объектов в соответствии с выбранной технологией
+    Вместо JDBC можно использовать ORM фреймворк - Hibernate (надстройка)
+        Spring Data - предоставлояет набор абстракций для хранения данных
+                      позволяет создавать операциии с сохраненными данными
+
+_______________________________________________________________________________________________________________________
+    Транзакции - определенный набор изменяющих операций, которые либо выполяются все, либо не выполняются @Transactional
+        В аннотацию заключают метод, который должен быть заключен в транзакцию
+    В Spring транзакции выполняются на основе аспектов. Работает только в случае исключения при выполнении.
+
+    Реализация функции хранения
+        @Repository
+        public class AccountRepository {
+         private final JdbcTemplate jdbc;
+         public AccountRepository(JdbcTemplate jdbc) {
+         this.jdbc = jdbc;
+         }
+         public Account findAccountById(long id) {
+         String sql = "SELECT * FROM account WHERE id = ?";
+         return jdbc.queryForObject(sql, new AccountRowMapper(), id);
+         }
+         public void changeAmount(long id, BigDecimal amount) {
+         String sql = "UPDATE account SET amount = ? WHERE id = ?";
+         jdbc.update(sql, amount, id);
+         }
+          public List<Account> findAllAccounts() {
+          String sql = "SELECT * FROM account";
+          return jdbc.query(sql, new AccountRowMapper());
+          }
+        }
+
+    Преобразование строки в экземпляр
+        public class AccountRowMapper
+         implements RowMapper<Account> {
+         @Override
+         public Account mapRow(ResultSet resultSet, int i)
+         throws SQLException {
+         Account a = new Account();
+         a.setId(resultSet.getInt("id"));
+         a.setName(resultSet.getString("name"));
+         a.setAmount(resultSet.getBigDecimal("amount"));
+         return a;
+         }
+        }
+
+    Реализация сценария перевод денег
+        @Service
+        public class TransferService {
+         private final AccountRepository accountRepository;
+         public TransferService(AccountRepository accountRepository) {
+         this.accountRepository = accountRepository;
+         }
+         @Transactional
+         public void transferMoney(long idSender,
+         long idReceiver,
+         BigDecimal amount) {
+         Account sender =
+         accountRepository.findAccountById(idSender);
+         Account receiver =
+         accountRepository.findAccountById(idReceiver);
+
+         BigDecimal senderNewAmount =
+         sender.getAmount().subtract(amount);
+         BigDecimal receiverNewAmount =
+         receiver.getAmount().add(amount);
+         accountRepository
+         .changeAmount(idSender, senderNewAmount);
+         accountRepository
+         .changeAmount(idReceiver, receiverNewAmount);
+         }
+        }
+
+
 _______________________________________________________________________________________________________________________
     Многопоточка используется также как и в Java Core                                                                   @Configuration
     Если нужно создать пул потоков - создается бин, по имени которого потом вызываем                                    public class ProjectConfiguration {
