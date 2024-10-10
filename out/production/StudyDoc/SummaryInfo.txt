@@ -1168,6 +1168,22 @@ ________________________________________________________________________________
         Spring Data - предоставлояет набор абстракций для хранения данных
                       позволяет создавать операциии с сохраненными данными
 
+    Spring data состоит из большщого количества модулей, подключать которые нужно по необхордимости.
+        Но в любом случае предоставляется один и тот же набор интерфейсов
+            Repository — наиболее абстрактный контракт. Если его расширить, приложение распознает интерфейс, написанный
+            как любой репозиторий Spring Data.
+            CrudRepository — простейший контракт Spring Data, который, кроме всего
+            прочего, предоставляет некоторые функции по взаимодействию с сохраненными данными. Если его расширить,
+            чтобы эти функции определить, то станут доступны простейшие операции создания, чтения, изменения
+            и удаления записей;
+            PagingAndSortingRepository — расширяет CrudRepository, добавляя операции сортировки и чтения определенного
+            количества записей (постранично)
+            JpaRepository — еще более специализированный контракт
+
+    @Query - аннотация обозначает что спринг не будет рассматривать селект как базовый, а будет сразу считывать как
+        команду БД
+
+    @Modifying - аннотация ставится если метод изменяет имеющиеся данные
 _______________________________________________________________________________________________________________________
     Транзакции - определенный набор изменяющих операций, которые либо выполяются все, либо не выполняются @Transactional
         В аннотацию заключают метод, который должен быть заключен в транзакцию
@@ -1391,5 +1407,211 @@ ________________________________________________________________________________
 
 
     трассировка - отслеживание запроса по сем сервисам которыые задействованы
+
+_______________________________________________________________________________________________________________________
+    Тестирование
+        модульные тесты — касаются только определенного участка логики; Модульные тесты
+            короткие, быстро выполняются и касаются только одного процесса.
+        интеграционные тесты — предназначены для проверки правильного взаимодействия нескольких компонентов
+    Инструмент непрерывной интеграции — это программный продукт, применяемый для проведения операций, который необходим
+    для сборки и — иногда — установки приложений в процессе разработки.
+
+    Модульные тесты — это методы, которые вызывают определенный сценарий использования, чтобы проверить его поведение
+        в специфических условиях. В модульном тестовом методе определяются условия, для которых выполняется сценарий
+        использования, и проверяется, соответствует ли поведение метода требованиям приложения. В модульных тестах
+        исключаются все зависимости тестируемой функции и рассматривается только данный изолированный фрагмент логики.
+
+    Берем класс
+        @Transactional
+        public void transferMoney(
+         long idSender,
+         long idReceiver,
+         BigDecimal amount) {
+         Account sender = accountRepository.findById(idSender)
+         .orElseThrow(() -> new AccountNotFoundException());
+         Account receiver = accountRepository.findById(idReceiver)
+         .orElseThrow(() -> new AccountNotFoundException());
+         BigDecimal senderNewAmount = sender.getAmount().subtract(amount);
+         BigDecimal receiverNewAmount = receiver.getAmount().add(amount);
+         accountRepository
+         .changeAmount(idSender, senderNewAmount);
+         accountRepository
+         .changeAmount(idReceiver, receiverNewAmount);
+        }
+
+            Любой тест состоит из трех основных частей:
+                Предпосылки - определить входные данные и найти все зависимости для проверяемой логики
+                Вызов выполнение - вызвать тестируемую логику, чтобы проверить выполнение
+                Проверки - определить все операции проверки
+            1- очевидно - успешное выполнение
+
+            Зависимости - все, что используется в методе, но не создается в нем
+                - параметры
+                - экземпляры объектов
+        Для контроля некоторых параметров используются заглушки.
+
+            public class TransferServiceUnitTests {
+             @Test
+             public void moneyTransferHappyFlow() {
+             AccountRepository accountRepository =
+             mock(AccountRepository.class);
+             TransferService transferService =
+             new TransferService(accountRepository);
+             Account sender = new Account();
+             sender.setId(1);
+             sender.setAmount(new BigDecimal(1000));
+             Account destination = new Account();
+             destination.setId(2);
+             destination.setAmount(new BigDecimal(1000));
+             given(accountRepository.findById(sender.getId()))
+             .willReturn(Optional.of(sender));
+             given(accountRepository.findById(destination.getId()))
+             .willReturn(Optional.of(destination));
+             transferService.transferMoney(
+             sender.getId(),
+             destination.getId(),
+             new BigDecimal(100)
+             );
+             verify(accountRepository)
+             .changeAmount(1, new BigDecimal(900));
+             verify(accountRepository)
+             .changeAmount(2, new BigDecimal(1100));
+             }
+            }
+
+        или с помощью аннотаций
+
+        @ExtendWith(MockitoExtension.class)
+        public class TransferServiceWithAnnotationsUnitTests {
+         @Mock
+         private AccountRepository accountRepository;
+         @InjectMocks
+         private TransferService transferService;
+         @Test
+         public void moneyTransferHappyFlow() {
+         Account sender = new Account();
+         sender.setId(1);
+         sender.setAmount(new BigDecimal(1000));
+         Account destination = new Account();
+         destination.setId(2);
+         destination.setAmount(new BigDecimal(1000));
+         given(accountRepository.findById(sender.getId()))
+         .willReturn(Optional.of(sender));
+         given(accountRepository.findById(destination.getId()))
+         .willReturn(Optional.of(destination));
+         transferService.transferMoney(1, 2, new BigDecimal(100));
+         verify(accountRepository)
+         .changeAmount(1, new BigDecimal(900));
+         verify(accountRepository)
+         .changeAmount(2, new BigDecimal(1100));
+         }
+        }
+         @DisplayName - используется для описания тестирования
+
+    Иногда требуется выполнение теста с исключением. - такое функционирование, при котором возникает ошибка и
+    выбрасывается исключение
+
+    @ExtendWith(MockitoExtension.class)
+    public class TransferServiceWithAnnotationsUnitTests {
+     @Mock
+     private AccountRepository accountRepository;
+     @InjectMocks
+     private TransferService transferService;
+     @Test
+     public void moneyTransferDestinationAccountNotFoundFlow() {
+     Account sender = new Account();
+     sender.setId(1);
+     sender.setAmount(new BigDecimal(1000));
+     given(accountRepository.findById(1L))
+     .willReturn(Optional.of(sender));
+     given(accountRepository.findById(2L))
+     .willReturn(Optional.empty());
+
+
+     assertThrows(                                                   - проверка исключения, используется assertThrows
+     AccountNotFoundException.class,
+     () -> transferService.transferMoney(1, 2, new BigDecimal(100))
+     );
+     verify(accountRepository, never())
+     .changeAmount(anyLong(), any());
+     }
+    }
+
+    Пример тестирования возвращаемого значения
+     @ExtendWith(MockitoExtension.class)
+     class LoginControllerUnitTests {
+      @Mock
+      private Model model;
+      @Mock
+      private LoginProcessor loginProcessor;
+      @InjectMocks
+      private LoginController loginController;
+       @Test
+       public void loginPostLoginSucceedsTest() {
+       given(loginProcessor.login())
+       .willReturn(true);
+       String result =
+       loginController.loginPost("username", "password", model);
+       assertEquals("login.html", result);
+       verify(model)
+       .addAttribute("message", "You are now logged in.");
+       }
+        @Test
+        public void loginPostLoginFailsTest() {
+        given(loginProcessor.login())
+        .willReturn(false);
+        String result =
+        loginController.loginPost("username", "password", model);
+        assertEquals("login.html", result);
+        verify(model)
+        .addAttribute("message", "Login failed!");
+        }
+      }
+
+    Интеграционные тесты
+        Взаимодействие между двумя (или более) объектами приложения. Тестирование правильного взаимодействия объектов
+        помогает обнаружить проблемым коммуникации, возникающие в том случае, если один из этих объектов изменяется.
+
+        Контакт между объектом приложения и функцией фреймворка, которая расширяет возможности этого объекта. Проверка
+        взаимодействия объекта с функциями помогает обнаружить проблемы обновления версии фреймворка. Интеграционный
+        тест позволяет немедленно узнать, что во фреймворке что-то изменилось и функция, на основе которой создан
+        данный объект,теперь работает иначе.
+
+        Интеграция приложения с уровнем хранения данных (базой данных). Тестирование взаимодействия репозитория с базой
+        данных гарантирует быстрое обнаружение проблем, появляющихся при обновлении или изменении
+        зависимости, которая обеспечивает контакт приложения с сохраненными данными (такой как JDBC-драйвер).
+
+        @SpringBootTest
+        class TransferServiceSpringIntegrationTests {
+         @MockBean
+         private AccountRepository accountRepository;
+         @Autowired
+         private TransferService transferService;
+         @Test
+         void transferServiceTransferAmountTest() {
+         Account sender = new Account();
+         sender.setId(1);
+         sender.setAmount(new BigDecimal(1000));
+         Account receiver = new Account();
+         receiver.setId(2);
+         receiver.setAmount(new BigDecimal(1000));
+         when(accountRepository.findById(1L))
+         .thenReturn(Optional.of(sender));
+         when(accountRepository.findById(2L))
+         .thenReturn(Optional.of(receiver));
+         transferService
+         .transferMoney(1, 2, new BigDecimal(100));
+         verify(accountRepository)
+         .changeAmount(1, new BigDecimal(900));
+         verify(accountRepository)
+         .changeAmount(2, new BigDecimal(1100));
+         }
+        }
+
+
+
+
+
+
 
 
